@@ -2,85 +2,95 @@ import streamlit as st
 import pandas as pd
 import random
 
-# --------- Sample Fake Data ---------
+# ---------------------------------------
+# 1. CONFIGURE DASHBOARD
+# ---------------------------------------
+st.set_page_config(page_title="Salida Gun Shop | Staff Dashboard", layout="wide")
+st.markdown("<h1 style='color:red;'>🔴 NEEDS ATTENTION</h1>", unsafe_allow_html=True)
+
+# ---------------------------------------
+# 2. LOAD DUMMY MESSAGE DATA
+# ---------------------------------------
 data = [
-    {"Name": "John Smith", "Category": "Gear Inquiry", "Message": "Do you have any Magpul stocks?", "Status": "New", "Assigned": "Unassigned", "Comment": ""},
-    {"Name": "Megan Lee", "Category": "Class Signup", "Message": "Is there a pistol training this weekend?", "Status": "Follow-up", "Assigned": "Unassigned", "Comment": ""},
-    {"Name": "Dave R.", "Category": "General Question", "Message": "What’s your return policy?", "Status": "Resolved", "Assigned": "Unassigned", "Comment": ""}
+    {"Name": "John Smith", "Category": "Gear Inquiry", "Message": "Do you have any Magpul stocks?", "Status": "New"},
+    {"Name": "Megan Lee", "Category": "Class Signup", "Message": "Is there a pistol training this weekend?", "Status": "New"},
+    {"Name": "Tom Davis", "Category": "Gear Inquiry", "Message": "Looking for 9mm ammo boxes.", "Status": "Follow-up"},
+    {"Name": "Sandra C.", "Category": "General Question", "Message": "What are your holiday hours?", "Status": "Resolved"},
+    {"Name": "Becky L.", "Category": "Class Signup", "Message": "Signing up for rifle course next month.", "Status": "New"}
 ]
 
+df = pd.DataFrame(data)
+df["Assigned To"] = "Unassigned"
+df["Comment"] = ""
+df["Completed"] = False
+
+# ---------------------------------------
+# 3. LOAD STOCK INVENTORY FROM GOOGLE SHEETS (as DataFrame)
+# ---------------------------------------
+@st.cache_data
+def load_inventory():
+    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTmnzBCJquVzOC_2YlRfWmT4-rUbsP9fXYBZYwn1Qbd82CBmQu2GF0h_wB0pNzC1pPIhK9Geq8_YACm/pub?gid=0&single=true&output=csv"
+    return pd.read_csv(url)
+
+try:
+    stock_df = load_inventory()
+except Exception as e:
+    stock_df = pd.DataFrame(columns=["Product", "Category", "Availability"])
+    st.warning("⚠️ Couldn't load stock inventory.")
+
+# ---------------------------------------
+# 4. FILTER OPTIONS
+# ---------------------------------------
+category_filter = st.selectbox("📂 Filter by Category", options=["All"] + sorted(df["Category"].unique().tolist()))
+
+if category_filter != "All":
+    df = df[df["Category"] == category_filter]
+
+# ---------------------------------------
+# 5. CLASS SIGNUP ALERT BANNER
+# ---------------------------------------
+if any(df["Category"] == "Class Signup"):
+    st.markdown("<h3 style='color:orange;'>📣 NEW CLASS SIGNUP ALERT</h3>", unsafe_allow_html=True)
+
+# ---------------------------------------
+# 6. STAFF ASSIGNMENT, STATUS, COMMENTS, COMPLETION
+# ---------------------------------------
 staff_members = ["Unassigned", "Josiah", "Deryk", "Derek", "Cody", "Drew", "Adam", "Matty", "Jenna", "Gavin", "Kenny", "Jeff", "Phil"]
 
-df = pd.DataFrame(data)
+st.write("### 📬 Incoming Messages")
 
-# --------- Sort Messages by Status Priority ---------
-status_priority = {"New": 0, "Follow-up": 1, "Resolved": 2}
-df["Priority"] = df["Status"].map(status_priority)
-df = df.sort_values(by="Priority")
+for i in df.index:
+    with st.container():
+        st.write(f"**From:** {df.loc[i, 'Name']} | **Category:** {df.loc[i, 'Category']}")
+        st.write(f"**Message:** {df.loc[i, 'Message']}")
 
-# --------- Sidebar Filters ---------
-st.set_page_config(page_title="Salida Gun Shop | Staff View", layout="wide")
-st.title("🔧 STAFF DASHBOARD - Salida Gun Shop")
+        # Simulated AI reply suggestion
+        st.markdown(f"💡 *AI Suggestion:* {random.choice(['Thanks for your message! Let me check on that and get back to you.', 'Yes, we usually have those in stock. Can I confirm your pickup time?', 'We’d love to help you with that. I’ll pass this to the right staff member now.'])}")
 
-st.sidebar.header("📂 Filter Messages")
-categories = ["All"] + sorted(df["Category"].unique())
-selected_category = st.sidebar.selectbox("View by Category", categories)
+        # Inventory check (basic keyword match)
+        matched_items = stock_df[stock_df["Product"].str.lower().str.contains(df.loc[i, "Message"].lower())] if not stock_df.empty else pd.DataFrame()
+        if not matched_items.empty:
+            availability = matched_items.iloc[0]["Availability"]
+            st.success(f"✅ Inventory Lookup: {matched_items.iloc[0]['Product']} is currently **{availability.upper()}**")
+        else:
+            st.info("🟡 No exact match found in inventory.")
 
-if selected_category != "All":
-    df = df[df["Category"] == selected_category]
+        # Staff assignment
+        df.loc[i, "Assigned To"] = st.selectbox("Assign to:", staff_members, index=0, key=f"assign_{i}")
 
-# --------- NEEDS ATTENTION Banner ---------
-if any(df["Status"].isin(["New", "Follow-up"])):
-    st.markdown("### 🚨 **NEEDS ATTENTION:** You have unresolved messages!")
+        # Status update
+        df.loc[i, "Status"] = st.selectbox("Status:", ["New", "Follow-up", "Resolved"], key=f"status_{i}")
 
-# --------- Visual Counters ---------
-col1, col2, col3 = st.columns(3)
-col1.metric("🆕 New", sum(df["Status"] == "New"))
-col2.metric("📍 Follow-up", sum(df["Status"] == "Follow-up"))
-col3.metric("✅ Resolved", sum(df["Status"] == "Resolved"))
+        # Comment
+        df.loc[i, "Comment"] = st.text_input("Comment:", key=f"comment_{i}")
 
-st.markdown("---")
+        # Completion checkbox
+        df.loc[i, "Completed"] = st.checkbox("Mark as Complete", key=f"complete_{i}")
 
-# --------- AI Reply Suggestion Function ---------
-def get_ai_reply(message):
-    suggestions = [
-        "Thanks for reaching out! We’ll check inventory and get back to you ASAP.",
-        "Yes! We have upcoming classes—I'll send you the details shortly.",
-        "Great question! Let me get you that info.",
-        "Thanks for the message—we're checking now and will follow up soon."
-    ]
-    return random.choice(suggestions)
+        st.markdown("---")
 
-# --------- Message Loop ---------
-for i, row in df.iterrows():
-    st.markdown(f"#### 📨 From: **{row['Name']}** | Category: _{row['Category']}_")
-    st.markdown(f"**Message:** {row['Message']}")
-
-    df.at[i, "Status"] = st.selectbox(
-        "Update Status",
-        ["New", "Follow-up", "Resolved"],
-        index=["New", "Follow-up", "Resolved"].index(row["Status"]),
-        key=f"status_{i}"
-    )
-
-    df.at[i, "Assigned"] = st.selectbox(
-        "Assign to Staff",
-        staff_members,
-        index=staff_members.index(row["Assigned"]),
-        key=f"assign_{i}"
-    )
-
-    df.at[i, "Comment"] = st.text_input(
-        "Comment / Internal Notes",
-        value=row["Comment"],
-        key=f"comment_{i}"
-    )
-
-    st.markdown("**💬 Suggested Reply:**")
-    st.code(get_ai_reply(row["Message"]), language="markdown")
-
-    st.markdown("---")
-
-# --------- Final Table ---------
-st.subheader("📋 Summary Table (Internal)")
-st.dataframe(df.drop(columns=["Priority"]))
+# ---------------------------------------
+# 7. DISPLAY STATUS SUMMARY TABLE
+# ---------------------------------------
+st.subheader("📊 Message Status Overview")
+st.dataframe(df[["Name", "Category", "Status", "Assigned To", "Comment", "Completed"]])
