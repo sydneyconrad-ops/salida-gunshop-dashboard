@@ -1,30 +1,30 @@
 import streamlit as st
 import pandas as pd
 
-# -------------------------------
-# Fake Data Setup
-# -------------------------------
+# -----------------------------
+# Sample message log (editable fake data)
+# -----------------------------
 data = [
     {"Name": "John Smith", "Category": "Gear Inquiry", "Message": "Do you have any Magpul stocks?", "Status": "New", "Assigned To": "Unassigned"},
-    {"Name": "Megan Lee", "Category": "Class Signup", "Message": "Is there a pistol training this weekend?", "Status": "Follow-up", "Assigned To": "Unassigned"},
-    {"Name": "Dave R.", "Category": "General Question", "Message": "What’s your return policy?", "Status": "Resolved", "Assigned To": "Unassigned"}
+    {"Name": "Megan Lee", "Category": "Class Signup", "Message": "Is there a pistol training this weekend?", "Status": "New", "Assigned To": "Unassigned"},
+    {"Name": "Dave R.", "Category": "General Question", "Message": "What’s your return policy?", "Status": "Resolved", "Assigned To": "Unassigned"},
+    {"Name": "Nina C.", "Category": "Class Signup", "Message": "Do you teach rifle classes?", "Status": "Follow-up", "Assigned To": "Ethan"}
 ]
 
+# -----------------------------
+# Updated Staff Members
+# -----------------------------
 staff_members = ["Unassigned", "Josiah", "Deryk", "Derek", "Cody", "Drew", "Adam", "Matty", "Jenna", "Gavin", "Kenny", "Jeff", "Phil"]
 
-# Turn into DataFrame and sort by Status
 df = pd.DataFrame(data)
-status_priority = {"New": 0, "Follow-up": 1, "Resolved": 2}
-df["Status Priority"] = df["Status"].map(status_priority)
-df = df.sort_values("Status Priority").reset_index(drop=True)
 
-
-# -------------------------------
-# Page Config
-# -------------------------------
+# Streamlit page settings
 st.set_page_config(page_title="Salida Gun Shop | Staff View", layout="centered")
 st.title("🔧 Staff Message Dashboard")
-# Show the first "New" task as a banner
+
+# -----------------------------
+# 🚨 Next Task Banner (First "New")
+# -----------------------------
 next_task = df[df["Status"] == "New"].head(1)
 
 if not next_task.empty:
@@ -34,23 +34,70 @@ if not next_task.empty:
 else:
     st.markdown("### ✅ All caught up!")
 
+# -----------------------------
+# 🚨 Alert if "Class Signup" messages are still New
+# -----------------------------
+urgent_class_signups = df[(df["Category"] == "Class Signup") & (df["Status"] == "New")]
+if not urgent_class_signups.empty:
+    st.error(f"🚨 {len(urgent_class_signups)} new Class Signup request(s) need attention!")
 
-# -------------------------------
-# Message Filter by Category
-# -------------------------------
-all_categories = ["All"] + sorted(df["Category"].unique().tolist())
-selected_category = st.selectbox("📂 Filter by Category", options=all_categories)
+# -----------------------------
+# Dropdown Filter by Category
+# -----------------------------
+selected_category = st.selectbox(
+    "📂 Filter by Category",
+    options=["All"] + df["Category"].unique().tolist()
+)
 
 if selected_category != "All":
-    filtered_df = df[df["Category"] == selected_category].reset_index(drop=True)
+    filtered_df = df[df["Category"] == selected_category]
 else:
-    filtered_df = df.copy()
+    filtered_df = df
 
-# -------------------------------
-# Visual Counters
-# -------------------------------
-new_count = (filtered_df["Status"] == "New").sum()
-follow_up_count = (filtered_df["Status"] == "Follow-up").sum()
-resolved_count = (filtered_df["Status"] == "Resolved").sum()
+# -----------------------------
+# Message Cards with Dropdowns
+# -----------------------------
+for i in filtered_df.index:
+    with st.expander(f"{filtered_df.loc[i, 'Name']} - {filtered_df.loc[i, 'Category']}"):
+        st.write(f"**Message:** {filtered_df.loc[i, 'Message']}")
 
-st.markdown(f"✅ **New:** {
+        # Status Dropdown
+        filtered_df.loc[i, 'Status'] = st.selectbox(
+            f"Update Status for {filtered_df.loc[i, 'Name']}",
+            options=["New", "Follow-up", "Resolved"],
+            index=["New", "Follow-up", "Resolved"].index(filtered_df.loc[i, 'Status']),
+            key=f"status_{i}"
+        )
+
+        # Assign To Dropdown
+        filtered_df.loc[i, 'Assigned To'] = st.selectbox(
+            f"Assign to Staff",
+            options=staff_members,
+            index=staff_members.index(filtered_df.loc[i, 'Assigned To']) if filtered_df.loc[i, 'Assigned To'] in staff_members else 0,
+            key=f"assign_{i}"
+        )
+
+# -----------------------------
+# Visual Counters Summary
+# -----------------------------
+st.markdown("### 📊 Status Overview")
+status_counts = df['Status'].value_counts()
+for status in ["New", "Follow-up", "Resolved"]:
+    count = status_counts.get(status, 0)
+    st.markdown(f"- **{status}:** {count}")
+
+# -----------------------------
+# Display Updated Table
+# -----------------------------
+st.subheader("📋 Updated Message Log")
+st.dataframe(filtered_df)
+
+# -----------------------------
+# Export CSV Button
+# -----------------------------
+st.download_button(
+    label="⬇️ Export Daily Report",
+    data=filtered_df.to_csv(index=False).encode('utf-8'),
+    file_name='daily_report.csv',
+    mime='text/csv'
+)
