@@ -8,12 +8,23 @@ data = [
     {"Name": "Dave R.", "Category": "General Question", "Message": "What’s your return policy?", "Status": "Resolved"}
 ]
 
+# Staff list
+staff_members = ["Unassigned", "Josiah", "Ethan", "Mike", "Sadie"]
+
 df = pd.DataFrame(data)
 
 st.set_page_config(page_title="Salida Gun Shop | Staff View", layout="centered")
 st.title("🔧 Staff Message Dashboard")
 
 for i in df.index:
+assigned = st.selectbox(
+    f"Assign to Staff for {filtered_df.loc[i, 'Name']}",
+    options=staff_members,
+    index=0,
+    key=f"assign_{i}"
+)
+filtered_df.loc[i, 'Assigned To'] = assigned
+
     st.write(f"**From:** {df.loc[i, 'Name']} | **Category:** {df.loc[i, 'Category']}")
     st.write(f"**Message:** {df.loc[i, 'Message']}")
     df.loc[i, 'Status'] = st.selectbox(
@@ -25,4 +36,5 @@ for i in df.index:
     st.markdown("---")
 
 st.subheader("📋 Updated Statuses")
-st.dataframe(df)
+st.dataframe(filtered_df)
+
