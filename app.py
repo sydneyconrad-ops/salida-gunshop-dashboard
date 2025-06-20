@@ -1,105 +1,88 @@
 import streamlit as st
 import pandas as pd
-import openai
+from datetime import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- SETTINGS ---
-spreadsheet_id = "1bD3IXAL3N8njmAxfCz6KHMy9TcFBX0Eh0V3HqLUrfkI"  # Your Sheet ID
-sheet_name = "sgs_inventory_sample"
-
-openai.api_key = st.secrets["openai_api_key"]  # Set in Streamlit Secrets
-
-# --- Connect to Google Sheets ---
+# --- Google Sheets Setup ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name("secrets.json", scope)
 client = gspread.authorize(creds)
-sheet = client.open_by_key(spreadsheet_id).worksheet(sheet_name)
-data = sheet.get_all_records()
-inventory_df = pd.DataFrame(data)
 
-# Normalize column headers
-inventory_df.columns = [col.strip().lower() for col in inventory_df.columns]
+# Sheet config
+sheet_url = "https://docs.google.com/spreadsheets/d/1bD3IXAL3N8njmAxfCz6KHMy9TcFBX0Eh0V3HqLUrfkI/edit?usp=sharing"
+sheet_id = sheet_url.split("/")[5]
+inventory_sheet = client.open_by_key(sheet_id).sheet1
+inventory_data = pd.DataFrame(inventory_sheet.get_all_records())
 
-# --- Sample Message Log ---
-messages = [
-    {"Name": "John Smith", "Category": "Gear Inquiry", "Message": "Do you have any Magpul stocks?", "Status": "New", "Assigned To": "Unassigned", "Comment": "", "Completed": False},
-    {"Name": "Megan Lee", "Category": "Class Signup", "Message": "Is there a pistol training this weekend?", "Status": "Follow-up", "Assigned To": "Unassigned", "Comment": "", "Completed": False},
-    {"Name": "Dave R.", "Category": "General Question", "Message": "What’s your return policy?", "Status": "Resolved", "Assigned To": "Unassigned", "Comment": "", "Completed": True},
-]
+# Sample inquiries (replace with database or form data)
+if "inquiries" not in st.session_state:
+    st.session_state.inquiries = [
+        {"name": "Mike", "message": "Do you have 9mm ammo?", "status": "New", "assigned": "Unassigned", "comments": "", "completed": False},
+        {"name": "Rachel", "message": "Signing up for gun safety class", "status": "New", "assigned": "Jenna", "comments": "", "completed": False},
+        {"name": "Terry", "message": "Looking for holsters for Glock 19", "status": "Follow-up", "assigned": "Adam", "comments": "", "completed": False}
+    ]
 
-df = pd.DataFrame(messages)
-staff_members = ["Unassigned", "Josiah", "Deryk", "Derek", "Cody", "Drew", "Adam", "Matty", "Jenna", "Gavin", "Kenny", "Jeff", "Phil"]
+# --- UI Styling ---
+st.set_page_config(page_title="GunShop Dashboard", layout="wide")
+st.markdown("## 🧭 Salida GunShop — Inquiry Dashboard")
 
-st.set_page_config(page_title="Salida Gun Shop | Staff View", layout="centered")
+st.markdown("### 🔥 NEEDS ATTENTION")
+needs_attention = [i for i in st.session_state.inquiries if not i["completed"]]
 
-# --- Priority Header ---
-st.markdown("## 🔴 NEEDS ATTENTION")
+if not needs_attention:
+    st.success("All caught up! No outstanding messages.")
+else:
+    for i, item in enumerate(needs_attention):
+        with st.expander(f"{item['name']} — {item['message'][:40]}..."):
+            cols = st.columns([2, 2, 4, 2, 2])
 
-# --- Category Filter ---
-selected_category = st.selectbox("📂 Filter by Category", ["All"] + df["Category"].unique().tolist())
-filtered_df = df if selected_category == "All" else df[df["Category"] == selected_category]
-
-# --- Class Signup Alert ---
-if any((df["Category"] == "Class Signup") & (df["Status"] != "Resolved") & (~df["Completed"])):
-    st.markdown("### 🥳 **NEW CLASS SIGNUP ALERT**")
-
-# --- Message Card Renderer ---
-st.markdown("### 📨 Incoming Messages")
-
-for i in filtered_df.index:
-    if df.loc[i, "Completed"]:
-        continue  # Skip completed messages in main view
-
-    with st.expander(f"From: {df.loc[i, 'Name']} | Category: {df.loc[i, 'Category']}"):
-        st.markdown(f"**Message:** {df.loc[i, 'Message']}")
-
-        # AI Suggestion
-        try:
-            prompt = f"A customer asked: {df.loc[i, 'Message']}\nReply politely and helpfully:"
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=60
+            # Status
+            item["status"] = cols[0].selectbox(
+                "Status", ["New", "Follow-up", "Resolved"], index=["New", "Follow-up", "Resolved"].index(item["status"]), key=f"status_{i}"
             )
-            suggestion = response["choices"][0]["message"]["content"]
-        except:
-            suggestion = "⚠️ Could not generate suggestion."
 
-        st.markdown(f"💡 **AI Suggestion:** {suggestion}")
+            # Staff
+            staff_members = ["Unassigned", "Josiah", "Deryk", "Derek", "Cody", "Drew", "Adam", "Matty", "Jenna", "Gavin", "Kenny", "Jeff", "Phil"]
+            item["assigned"] = cols[1].selectbox("Assign to", staff_members, index=staff_members.index(item["assigned"]), key=f"assign_{i}")
 
-        # Stock Lookup
-        try:
-            msg_lower = df.loc[i, "Message"].lower()
-            inventory_df["product_lower"] = inventory_df["product"].str.lower()
-            match = inventory_df[inventory_df["product_lower"].str.contains(msg_lower)]
-            if not match.empty:
-                availability = match.iloc[0]["availability"]
-                st.success(f"✅ Item in stock: {match.iloc[0]['product']} → {availability}")
-            else:
-                st.info("🟡 No exact match found in inventory.")
-        except Exception as e:
-            st.warning("⚠️ Couldn't load stock inventory.")
+            # Comment box
+            item["comments"] = cols[2].text_area("Comments", item["comments"], key=f"comment_{i}")
 
-        # Assignment
-        df.loc[i, "Assigned To"] = st.selectbox("Assign to:", staff_members, index=staff_members.index(df.loc[i, "Assigned To"]), key=f"assign_{i}")
+            # Inventory lookup
+            product_match = inventory_data[inventory_data["product"].str.lower().str.contains(item["message"].lower())]
+            inventory_msg = "Product not found."
+            if not product_match.empty:
+                row = product_match.iloc[0]
+                inventory_msg = f"{row['product']} - {row['availability']} ({row['location']})"
+            cols[3].markdown(f"**Stock Lookup:** {inventory_msg}")
 
-        # Status
-        df.loc[i, "Status"] = st.selectbox("Status:", ["New", "Follow-up", "Resolved"], index=["New", "Follow-up", "Resolved"].index(df.loc[i, "Status"]), key=f"status_{i}")
+            # Completion
+            if cols[4].checkbox("Mark complete", key=f"complete_{i}"):
+                item["completed"] = True
+                item["status"] = "Resolved"
 
-        # Comments
-        df.loc[i, "Comment"] = st.text_input("Comment:", value=df.loc[i, "Comment"], key=f"comment_{i}")
+# --- Completed Tasks ---
+st.markdown("---")
+st.markdown("### ✅ COMPLETED INQUIRIES")
+completed = [i for i in st.session_state.inquiries if i["completed"]]
 
-        # Completion
-        df.loc[i, "Completed"] = st.checkbox("✅ Mark as Complete", value=df.loc[i, "Completed"], key=f"complete_{i}")
+if completed:
+    for item in completed:
+        st.markdown(f"- {item['name']} — {item['message']} *(Handled by {item['assigned']})*")
 
-# --- Completed Messages ---
-if any(df["Completed"]):
-    st.markdown("### ✅ Completed Tasks")
-    for i in df.index:
-        if df.loc[i, "Completed"]:
-            with st.expander(f"✅ {df.loc[i, 'Name']} | {df.loc[i, 'Category']}"):
-                st.markdown(f"**Message:** {df.loc[i, 'Message']}")
-                st.markdown(f"**Status:** {df.loc[i, 'Status']}")
-                st.markdown(f"**Assigned To:** {df.loc[i, 'Assigned To']}")
-                st.markdown(f"**Comment:** {df.loc[i, 'Comment']}")
+# --- Add new inquiry manually (optional) ---
+with st.expander("➕ Add New Inquiry (Manual Entry)"):
+    new_name = st.text_input("Name")
+    new_msg = st.text_input("Message")
+    if st.button("Add Inquiry"):
+        st.session_state.inquiries.append({
+            "name": new_name,
+            "message": new_msg,
+            "status": "New",
+            "assigned": "Unassigned",
+            "comments": "",
+            "completed": False
+        })
+        st.success("Inquiry added!")
+
