@@ -29,7 +29,7 @@ df["Completed"] = False
 # ---------------------------------------
 @st.cache_data
 def load_inventory():
-    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTmnzBCJquVzOC_2YlRfWmT4-rUbsP9fXYBZYwn1Qbd82CBmQu2GF0h_wB0pNzC1pPIhK9Geq8_YACm/pub?gid=0&single=true&output=csv"
+    url = "https://docs.google.com/spreadsheets/d/1PustzDWgFysPiMh_n7HUUVCoh2qNJmHOX78Y8i2gPRk/edit?usp=sharing"
     return pd.read_csv(url)
 
 try:
