@@ -1,132 +1,86 @@
 import streamlit as st
 import pandas as pd
-import openai
-from datetime import datetime
+import random
 
-# --- CONFIGURATION ---
-openai.api_key = "YOUR_OPENAI_API_KEY_HERE"  # ← Replace this!
-
-# --- SAMPLE DATA ---
+# --------- Sample Fake Data ---------
 data = [
-    {
-        "Name": "John Smith",
-        "Category": "Gear Inquiry",
-        "Message": "Do you have any Magpul stocks?",
-        "Status": "New",
-        "Assigned To": "Unassigned",
-        "Comments": "",
-        "Comment History": [],
-        "Suggested Reply": ""
-    },
-    {
-        "Name": "Megan Lee",
-        "Category": "Class Signup",
-        "Message": "Is there a pistol training this weekend?",
-        "Status": "Follow-up",
-        "Assigned To": "Unassigned",
-        "Comments": "",
-        "Comment History": [],
-        "Suggested Reply": ""
-    },
-    {
-        "Name": "Dave R.",
-        "Category": "General Question",
-        "Message": "What’s your return policy?",
-        "Status": "Resolved",
-        "Assigned To": "Unassigned",
-        "Comments": "",
-        "Comment History": [],
-        "Suggested Reply": ""
-    }
+    {"Name": "John Smith", "Category": "Gear Inquiry", "Message": "Do you have any Magpul stocks?", "Status": "New", "Assigned": "Unassigned", "Comment": ""},
+    {"Name": "Megan Lee", "Category": "Class Signup", "Message": "Is there a pistol training this weekend?", "Status": "Follow-up", "Assigned": "Unassigned", "Comment": ""},
+    {"Name": "Dave R.", "Category": "General Question", "Message": "What’s your return policy?", "Status": "Resolved", "Assigned": "Unassigned", "Comment": ""}
 ]
 
-staff_members = [
-    "Unassigned", "Josiah", "Deryk", "Derek", "Cody", "Drew",
-    "Adam", "Matty", "Jenna", "Gavin", "Kenny", "Jeff", "Phil"
-]
+staff_members = ["Unassigned", "Josiah", "Deryk", "Derek", "Cody", "Drew", "Adam", "Matty", "Jenna", "Gavin", "Kenny", "Jeff", "Phil"]
 
 df = pd.DataFrame(data)
 
-# --- STREAMLIT PAGE CONFIG ---
-st.set_page_config(page_title="Salida Gun Shop | Staff View", layout="centered")
-st.title("🔧 Staff Message Dashboard")
+# --------- Sort Messages by Status Priority ---------
+status_priority = {"New": 0, "Follow-up": 1, "Resolved": 2}
+df["Priority"] = df["Status"].map(status_priority)
+df = df.sort_values(by="Priority")
 
-# --- CATEGORY FILTER ---
-categories = ["All"] + sorted(df["Category"].unique().tolist())
-selected_category = st.selectbox("Filter by Category", categories)
+# --------- Sidebar Filters ---------
+st.set_page_config(page_title="Salida Gun Shop | Staff View", layout="wide")
+st.title("🔧 STAFF DASHBOARD - Salida Gun Shop")
+
+st.sidebar.header("📂 Filter Messages")
+categories = ["All"] + sorted(df["Category"].unique())
+selected_category = st.sidebar.selectbox("View by Category", categories)
 
 if selected_category != "All":
-    filtered_df = df[df["Category"] == selected_category].copy()
-else:
-    filtered_df = df.copy()
+    df = df[df["Category"] == selected_category]
 
-# --- ALERT FOR CLASS SIGNUPS ---
-if any((df["Category"] == "Class Signup") & (df["Status"].isin(["New", "Follow-up"]))):
-    st.markdown("### :rotating_light: **New Class Signup Needs Follow-Up!**", unsafe_allow_html=True)
+# --------- NEEDS ATTENTION Banner ---------
+if any(df["Status"].isin(["New", "Follow-up"])):
+    st.markdown("### 🚨 **NEEDS ATTENTION:** You have unresolved messages!")
 
-# --- MAIN LOOP ---
-for i in filtered_df.index:
-    with st.expander(f"From: {filtered_df.loc[i, 'Name']} | Category: {filtered_df.loc[i, 'Category']}"):
-        st.write(f"**Message:** {filtered_df.loc[i, 'Message']}")
+# --------- Visual Counters ---------
+col1, col2, col3 = st.columns(3)
+col1.metric("🆕 New", sum(df["Status"] == "New"))
+col2.metric("📍 Follow-up", sum(df["Status"] == "Follow-up"))
+col3.metric("✅ Resolved", sum(df["Status"] == "Resolved"))
 
-        # Status Dropdown
-        filtered_df.loc[i, 'Status'] = st.selectbox(
-            f"Update Status for {filtered_df.loc[i, 'Name']}",
-            options=["New", "Follow-up", "Resolved"],
-            index=["New", "Follow-up", "Resolved"].index(filtered_df.loc[i, 'Status']),
-            key=f"status_{i}"
-        )
+st.markdown("---")
 
-        # Assign Staff
-        filtered_df.loc[i, 'Assigned To'] = st.selectbox(
-            "Assign to Staff",
-            options=staff_members,
-            index=staff_members.index(filtered_df.loc[i, 'Assigned To']),
-            key=f"assign_{i}"
-        )
+# --------- AI Reply Suggestion Function ---------
+def get_ai_reply(message):
+    suggestions = [
+        "Thanks for reaching out! We’ll check inventory and get back to you ASAP.",
+        "Yes! We have upcoming classes—I'll send you the details shortly.",
+        "Great question! Let me get you that info.",
+        "Thanks for the message—we're checking now and will follow up soon."
+    ]
+    return random.choice(suggestions)
 
-        # Add Comment
-        new_comment = st.text_input(
-            "Comment or Note:",
-            value=filtered_df.loc[i, 'Comments'],
-            key=f"comment_{i}"
-        )
+# --------- Message Loop ---------
+for i, row in df.iterrows():
+    st.markdown(f"#### 📨 From: **{row['Name']}** | Category: _{row['Category']}_")
+    st.markdown(f"**Message:** {row['Message']}")
 
-        if new_comment != filtered_df.loc[i, 'Comments']:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            history = filtered_df.loc[i, "Comment History"]
-            history.append(f"[{timestamp}] {new_comment}")
-            filtered_df.loc[i, 'Comment History'] = history
-            filtered_df.loc[i, 'Comments'] = new_comment
+    df.at[i, "Status"] = st.selectbox(
+        "Update Status",
+        ["New", "Follow-up", "Resolved"],
+        index=["New", "Follow-up", "Resolved"].index(row["Status"]),
+        key=f"status_{i}"
+    )
 
-        # View Comment History
-        if filtered_df.loc[i, 'Comment History']:
-            st.markdown("**🕒 Comment History:**")
-            for entry in filtered_df.loc[i, 'Comment History']:
-                st.markdown(f"- {entry}")
+    df.at[i, "Assigned"] = st.selectbox(
+        "Assign to Staff",
+        staff_members,
+        index=staff_members.index(row["Assigned"]),
+        key=f"assign_{i}"
+    )
 
-        # Generate GPT reply suggestion
-        if st.button(f"💡 Suggest Auto-Reply for {filtered_df.loc[i, 'Name']}", key=f"gpt_{i}"):
-            try:
-                response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant at a gun shop."},
-                        {"role": "user", "content": filtered_df.loc[i, "Message"]}
-                    ]
-                )
-                reply = response.choices[0].message.content.strip()
-                filtered_df.loc[i, "Suggested Reply"] = reply
-            except Exception as e:
-                st.error(f"Error generating reply: {e}")
+    df.at[i, "Comment"] = st.text_input(
+        "Comment / Internal Notes",
+        value=row["Comment"],
+        key=f"comment_{i}"
+    )
 
-        # Show reply
-        if filtered_df.loc[i, "Suggested Reply"]:
-            st.markdown(f"**💬 Suggested Reply:** {filtered_df.loc[i, 'Suggested Reply']}")
+    st.markdown("**💬 Suggested Reply:**")
+    st.code(get_ai_reply(row["Message"]), language="markdown")
 
-# --- FINAL TABLE + EXPORT ---
-st.subheader("📋 Updated Statuses")
-st.dataframe(filtered_df.drop(columns=["Comment History", "Suggested Reply"]), use_container_width=True)
+    st.markdown("---")
 
-csv = filtered_df.to_csv(index=False).encode('utf-8')
-st.download_button("📤 Export Daily Report", data=csv, file_name="daily_report.csv", mime="text/csv")
+# --------- Final Table ---------
+st.subheader("📋 Summary Table (Internal)")
+st.dataframe(df.drop(columns=["Priority"]))
