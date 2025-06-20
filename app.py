@@ -12,7 +12,12 @@ data = [
 
 staff_members = ["Unassigned", "Josiah", "Deryk", "Derek", "Cody", "Drew", "Adam", "Matty", "Jenna", "Gavin", "Kenny", "Jeff", "Phil"]
 
+# Turn into DataFrame and sort by Status
 df = pd.DataFrame(data)
+status_priority = {"New": 0, "Follow-up": 1, "Resolved": 2}
+df["Status Priority"] = df["Status"].map(status_priority)
+df = df.sort_values("Status Priority").reset_index(drop=True)
+
 
 # -------------------------------
 # Page Config
