@@ -24,6 +24,16 @@ df = df.sort_values("Status Priority").reset_index(drop=True)
 # -------------------------------
 st.set_page_config(page_title="Salida Gun Shop | Staff View", layout="centered")
 st.title("🔧 Staff Message Dashboard")
+# Show the first "New" task as a banner
+next_task = df[df["Status"] == "New"].head(1)
+
+if not next_task.empty:
+    st.markdown("### 🔔 Next Task")
+    st.markdown(f"**From:** {next_task.iloc[0]['Name']} | **Category:** {next_task.iloc[0]['Category']}")
+    st.markdown(f"**Message:** {next_task.iloc[0]['Message']}")
+else:
+    st.markdown("### ✅ All caught up!")
+
 
 # -------------------------------
 # Message Filter by Category
