@@ -1,93 +1,74 @@
 import streamlit as st
 import pandas as pd
-import random
+from openai import OpenAI
+import re
 
-# ---------------------------------------
-# CONFIGURE DASHBOARD
-# ---------------------------------------
-st.set_page_config(page_title="Salida Gun Shop | Staff Dashboard", layout="wide")
-st.markdown("<h1 style='color:red;'>🔴 NEEDS ATTENTION</h1>", unsafe_allow_html=True)
+# 🧠 CONFIG
+st.set_page_config("Salida Gun Shop | Staff View", layout="wide")
+st.markdown("## 🔴 NEEDS ATTENTION")
 
-# ---------------------------------------
-# LOAD MESSAGE DATA
-# ---------------------------------------
-data = [
-    {"Name": "John Smith", "Category": "Gear Inquiry", "Message": "Do you have any Magpul stocks?", "Status": "New", "Assigned To": "Unassigned", "Comment": "", "Completed": False},
-    {"Name": "Megan Lee", "Category": "Class Signup", "Message": "Is there a pistol training this weekend?", "Status": "New", "Assigned To": "Unassigned", "Comment": "", "Completed": False},
-    {"Name": "Tom Davis", "Category": "Gear Inquiry", "Message": "Looking for 9mm ammo boxes.", "Status": "Follow-up", "Assigned To": "Unassigned", "Comment": "", "Completed": False},
-    {"Name": "Sandra C.", "Category": "General Question", "Message": "What are your holiday hours?", "Status": "Resolved", "Assigned To": "Jenna", "Comment": "Emailed her.", "Completed": True}
+# 🧾 Sample incoming messages
+messages = [
+    {"Name": "John Smith", "Category": "Gear Inquiry", "Message": "Do you have any Magpul stocks?", "Status": "New", "Assigned To": "Unassigned", "Comment": "", "Complete": False},
+    {"Name": "Megan Lee", "Category": "Class Signup", "Message": "Is there a pistol training this weekend?", "Status": "Follow-up", "Assigned To": "Unassigned", "Comment": "", "Complete": False},
+    {"Name": "Dave R.", "Category": "General Question", "Message": "What’s your return policy?", "Status": "Resolved", "Assigned To": "Unassigned", "Comment": "", "Complete": True},
 ]
 
-df = pd.DataFrame(data)
-
-# ---------------------------------------
-# LOAD STOCK INVENTORY FROM GOOGLE SHEETS
-# ---------------------------------------
-@st.cache_data
-def load_inventory():
-    # Replace with your actual public CSV export link from your sheet
-    url = "https://docs.google.com/spreadsheets/d/1PustzDWgFysPiMh_n7HUUVCoh2qNJmHOX78Y8i2gPRk/edit?usp=sharing"
-    return pd.read_csv(url)
-
-try:
-    stock_df = load_inventory()
-except Exception as e:
-    stock_df = pd.DataFrame(columns=["Product", "Category", "Availability"])
-    st.warning("⚠️ Couldn't load stock inventory.")
-
-# ---------------------------------------
-# FILTER OPTIONS
-# ---------------------------------------
-category_filter = st.selectbox("📂 Filter by Category", options=["All"] + sorted(df["Category"].unique().tolist()))
-
-if category_filter != "All":
-    df = df[df["Category"] == category_filter]
-
-# ---------------------------------------
-# CLASS SIGNUP BANNER
-# ---------------------------------------
-if any((df["Category"] == "Class Signup") & (df["Completed"] == False)):
-    st.markdown("<h3 style='color:orange;'>📣 NEW CLASS SIGNUP ALERT</h3>", unsafe_allow_html=True)
-
-# ---------------------------------------
-# STAFF & OUTSTANDING TASKS
-# ---------------------------------------
 staff_members = ["Unassigned", "Josiah", "Deryk", "Derek", "Cody", "Drew", "Adam", "Matty", "Jenna", "Gavin", "Kenny", "Jeff", "Phil"]
 
-st.write("### 📬 Incoming Messages")
+df = pd.DataFrame(messages)
 
-for i in df[df["Completed"] == False].index:
-    with st.container():
-        st.write(f"**From:** {df.loc[i, 'Name']} | **Category:** {df.loc[i, 'Category']}")
-        st.write(f"**Message:** {df.loc[i, 'Message']}")
+# 📦 INVENTORY LOOKUP
+@st.cache_data(ttl=300)
+def load_inventory():
+    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTjTuYv6_hPYVcH-Yvtr9jI4SE8g0ZdQX4yluFpmgtnKu0P5T7IJVW5DQaGfPWZsQ/pub?output=csv"
+    try:
+        return pd.read_csv(url)
+    except Exception:
+        st.warning("⚠️ Couldn't load stock inventory.")
+        return pd.DataFrame(columns=["Product", "Category", "Availability"])
 
-        st.markdown(f"💡 *AI Suggestion:* {random.choice(['Thanks for your message! Let me check on that and get back to you.', 'Yes, we usually have those in stock. Can I confirm your pickup time?', 'We’d love to help you with that. I’ll pass this to the right staff member now.'])}")
+inventory_df = load_inventory()
 
-        if not stock_df.empty:
-            match = stock_df[stock_df["Product"].str.lower().str.contains(df.loc[i, "Message"].lower())]
-            if not match.empty:
-                st.success(f"✅ Inventory: {match.iloc[0]['Product']} is **{match.iloc[0]['Availability'].upper()}**")
-            else:
-                st.info("🟡 No exact match found in inventory.")
-        else:
-            st.warning("⚠️ Inventory not loaded.")
+# 📣 Class Signup Alert
+if any((df["Category"] == "Class Signup") & (df["Status"] != "Resolved")):
+    st.error("🎓 NEW CLASS SIGNUP ALERT")
 
-        df.loc[i, "Assigned To"] = st.selectbox("Assign to:", staff_members, index=staff_members.index(df.loc[i, "Assigned To"]), key=f"assign_{i}")
-        df.loc[i, "Status"] = st.selectbox("Status:", ["New", "Follow-up", "Resolved"], index=["New", "Follow-up", "Resolved"].index(df.loc[i, "Status"]), key=f"status_{i}")
-        df.loc[i, "Comment"] = st.text_input("Comment:", value=df.loc[i, "Comment"], key=f"comment_{i}")
-        df.loc[i, "Completed"] = st.checkbox("Mark as Complete", value=df.loc[i, "Completed"], key=f"complete_{i}")
+# 🔍 Filter by category
+selected_category = st.selectbox("📂 Filter by Category", ["All"] + sorted(df["Category"].unique()))
+if selected_category != "All":
+    df = df[df["Category"] == selected_category]
 
-        st.markdown("---")
+st.markdown("### 📬 Incoming Messages")
 
-# ---------------------------------------
-# COMPLETED TASKS (COLLAPSIBLE)
-# ---------------------------------------
-with st.expander("✅ View Completed Tasks"):
-    completed = df[df["Completed"] == True]
-    st.dataframe(completed[["Name", "Category", "Status", "Assigned To", "Comment"]])
+# ✅ Helper: Inventory check
+def check_inventory(message):
+    for product in inventory_df["Product"]:
+        if product.lower() in message.lower():
+            availability = inventory_df[inventory_df["Product"] == product]["Availability"].values[0]
+            return f"✅ Yes, we usually have those in stock. Can I confirm your pickup time?" if availability == "In Stock" else f"ℹ️ Item found: {availability}"
+    return "💡 Suggestion: Thanks for your message! Let me check on that and get back to you."
 
-# ---------------------------------------
-# SUMMARY TABLE
-# ---------------------------------------
-st.subheader("📊 Message Status Summary")
-st.dataframe(df[["Name", "Category", "Status", "Assigned To", "Comment", "Completed"]])
+# 🔁 Main Message Loop
+for i in df.index:
+    if df.at[i, "Complete"]:
+        continue
+
+    with st.expander(f"**From:** {df.at[i, 'Name']} | **Category:** {df.at[i, 'Category']}"):
+        st.write(f"**Message:** {df.at[i, 'Message']}")
+        
+        suggestion = check_inventory(df.at[i, "Message"])
+        st.info(f"💡 AI Suggestion: {suggestion}")
+        
+        df.at[i, "Assigned To"] = st.selectbox("Assign to:", staff_members, index=staff_members.index(df.at[i, "Assigned To"]), key=f"assign_{i}")
+        df.at[i, "Status"] = st.selectbox("Status:", ["New", "Follow-up", "Resolved"], index=["New", "Follow-up", "Resolved"].index(df.at[i, "Status"]), key=f"status_{i}")
+        df.at[i, "Comment"] = st.text_input("Comment:", value=df.at[i, "Comment"], key=f"comment_{i}")
+        df.at[i, "Complete"] = st.checkbox("✅ Mark as Complete", value=df.at[i, "Complete"], key=f"complete_{i}")
+
+# 🧾 Completed section
+with st.expander("✅ Completed Messages"):
+    st.dataframe(df[df["Complete"] == True][["Name", "Category", "Message", "Status", "Assigned To", "Comment"]], use_container_width=True)
+
+# 🧃 Still active
+with st.expander("📋 Updated Statuses"):
+    st.dataframe(df[df["Complete"] == False][["Name", "Category", "Message", "Status", "Assigned To"]], use_container_width=True)
