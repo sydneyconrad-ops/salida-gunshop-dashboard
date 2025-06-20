@@ -22,4 +22,7 @@ if any(df["Category"] == "Class Signup") and any(df["Status"] == "New"):
 
 # ---------- CATEGORY FILTER ----------
 categories = ["All"] + sorted(df["Category"].unique().tolist())
-selected_category = st.selectbox("Filter by Category", c_
+selected_category = st.selectbox("Filter by Category", categories)
+if selected_category != "All":
+    df = df[df["Category"] == selected_category]
+
