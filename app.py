@@ -3,32 +3,29 @@ import pandas as pd
 import random
 
 # ---------------------------------------
-# 1. CONFIGURE DASHBOARD
+# CONFIGURE DASHBOARD
 # ---------------------------------------
 st.set_page_config(page_title="Salida Gun Shop | Staff Dashboard", layout="wide")
 st.markdown("<h1 style='color:red;'>🔴 NEEDS ATTENTION</h1>", unsafe_allow_html=True)
 
 # ---------------------------------------
-# 2. LOAD DUMMY MESSAGE DATA
+# LOAD MESSAGE DATA
 # ---------------------------------------
 data = [
-    {"Name": "John Smith", "Category": "Gear Inquiry", "Message": "Do you have any Magpul stocks?", "Status": "New"},
-    {"Name": "Megan Lee", "Category": "Class Signup", "Message": "Is there a pistol training this weekend?", "Status": "New"},
-    {"Name": "Tom Davis", "Category": "Gear Inquiry", "Message": "Looking for 9mm ammo boxes.", "Status": "Follow-up"},
-    {"Name": "Sandra C.", "Category": "General Question", "Message": "What are your holiday hours?", "Status": "Resolved"},
-    {"Name": "Becky L.", "Category": "Class Signup", "Message": "Signing up for rifle course next month.", "Status": "New"}
+    {"Name": "John Smith", "Category": "Gear Inquiry", "Message": "Do you have any Magpul stocks?", "Status": "New", "Assigned To": "Unassigned", "Comment": "", "Completed": False},
+    {"Name": "Megan Lee", "Category": "Class Signup", "Message": "Is there a pistol training this weekend?", "Status": "New", "Assigned To": "Unassigned", "Comment": "", "Completed": False},
+    {"Name": "Tom Davis", "Category": "Gear Inquiry", "Message": "Looking for 9mm ammo boxes.", "Status": "Follow-up", "Assigned To": "Unassigned", "Comment": "", "Completed": False},
+    {"Name": "Sandra C.", "Category": "General Question", "Message": "What are your holiday hours?", "Status": "Resolved", "Assigned To": "Jenna", "Comment": "Emailed her.", "Completed": True}
 ]
 
 df = pd.DataFrame(data)
-df["Assigned To"] = "Unassigned"
-df["Comment"] = ""
-df["Completed"] = False
 
 # ---------------------------------------
-# 3. LOAD STOCK INVENTORY FROM GOOGLE SHEETS (as DataFrame)
+# LOAD STOCK INVENTORY FROM GOOGLE SHEETS
 # ---------------------------------------
 @st.cache_data
 def load_inventory():
+    # Replace with your actual public CSV export link from your sheet
     url = "https://docs.google.com/spreadsheets/d/1PustzDWgFysPiMh_n7HUUVCoh2qNJmHOX78Y8i2gPRk/edit?usp=sharing"
     return pd.read_csv(url)
 
@@ -39,7 +36,7 @@ except Exception as e:
     st.warning("⚠️ Couldn't load stock inventory.")
 
 # ---------------------------------------
-# 4. FILTER OPTIONS
+# FILTER OPTIONS
 # ---------------------------------------
 category_filter = st.selectbox("📂 Filter by Category", options=["All"] + sorted(df["Category"].unique().tolist()))
 
@@ -47,50 +44,50 @@ if category_filter != "All":
     df = df[df["Category"] == category_filter]
 
 # ---------------------------------------
-# 5. CLASS SIGNUP ALERT BANNER
+# CLASS SIGNUP BANNER
 # ---------------------------------------
-if any(df["Category"] == "Class Signup"):
+if any((df["Category"] == "Class Signup") & (df["Completed"] == False)):
     st.markdown("<h3 style='color:orange;'>📣 NEW CLASS SIGNUP ALERT</h3>", unsafe_allow_html=True)
 
 # ---------------------------------------
-# 6. STAFF ASSIGNMENT, STATUS, COMMENTS, COMPLETION
+# STAFF & OUTSTANDING TASKS
 # ---------------------------------------
 staff_members = ["Unassigned", "Josiah", "Deryk", "Derek", "Cody", "Drew", "Adam", "Matty", "Jenna", "Gavin", "Kenny", "Jeff", "Phil"]
 
 st.write("### 📬 Incoming Messages")
 
-for i in df.index:
+for i in df[df["Completed"] == False].index:
     with st.container():
         st.write(f"**From:** {df.loc[i, 'Name']} | **Category:** {df.loc[i, 'Category']}")
         st.write(f"**Message:** {df.loc[i, 'Message']}")
 
-        # Simulated AI reply suggestion
         st.markdown(f"💡 *AI Suggestion:* {random.choice(['Thanks for your message! Let me check on that and get back to you.', 'Yes, we usually have those in stock. Can I confirm your pickup time?', 'We’d love to help you with that. I’ll pass this to the right staff member now.'])}")
 
-        # Inventory check (basic keyword match)
-        matched_items = stock_df[stock_df["Product"].str.lower().str.contains(df.loc[i, "Message"].lower())] if not stock_df.empty else pd.DataFrame()
-        if not matched_items.empty:
-            availability = matched_items.iloc[0]["Availability"]
-            st.success(f"✅ Inventory Lookup: {matched_items.iloc[0]['Product']} is currently **{availability.upper()}**")
+        if not stock_df.empty:
+            match = stock_df[stock_df["Product"].str.lower().str.contains(df.loc[i, "Message"].lower())]
+            if not match.empty:
+                st.success(f"✅ Inventory: {match.iloc[0]['Product']} is **{match.iloc[0]['Availability'].upper()}**")
+            else:
+                st.info("🟡 No exact match found in inventory.")
         else:
-            st.info("🟡 No exact match found in inventory.")
+            st.warning("⚠️ Inventory not loaded.")
 
-        # Staff assignment
-        df.loc[i, "Assigned To"] = st.selectbox("Assign to:", staff_members, index=0, key=f"assign_{i}")
-
-        # Status update
-        df.loc[i, "Status"] = st.selectbox("Status:", ["New", "Follow-up", "Resolved"], key=f"status_{i}")
-
-        # Comment
-        df.loc[i, "Comment"] = st.text_input("Comment:", key=f"comment_{i}")
-
-        # Completion checkbox
-        df.loc[i, "Completed"] = st.checkbox("Mark as Complete", key=f"complete_{i}")
+        df.loc[i, "Assigned To"] = st.selectbox("Assign to:", staff_members, index=staff_members.index(df.loc[i, "Assigned To"]), key=f"assign_{i}")
+        df.loc[i, "Status"] = st.selectbox("Status:", ["New", "Follow-up", "Resolved"], index=["New", "Follow-up", "Resolved"].index(df.loc[i, "Status"]), key=f"status_{i}")
+        df.loc[i, "Comment"] = st.text_input("Comment:", value=df.loc[i, "Comment"], key=f"comment_{i}")
+        df.loc[i, "Completed"] = st.checkbox("Mark as Complete", value=df.loc[i, "Completed"], key=f"complete_{i}")
 
         st.markdown("---")
 
 # ---------------------------------------
-# 7. DISPLAY STATUS SUMMARY TABLE
+# COMPLETED TASKS (COLLAPSIBLE)
 # ---------------------------------------
-st.subheader("📊 Message Status Overview")
+with st.expander("✅ View Completed Tasks"):
+    completed = df[df["Completed"] == True]
+    st.dataframe(completed[["Name", "Category", "Status", "Assigned To", "Comment"]])
+
+# ---------------------------------------
+# SUMMARY TABLE
+# ---------------------------------------
+st.subheader("📊 Message Status Summary")
 st.dataframe(df[["Name", "Category", "Status", "Assigned To", "Comment", "Completed"]])
